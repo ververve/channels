@@ -26,56 +26,76 @@ import scala.async.Async.{async, await}
 package object asynq {
 
   trait Channel[T] {
-    def put(value: T): Future[Unit]
-    def take(): Future[T]
+    def put(value: T): Future[Boolean]
+    def take(): Future[Option[T]]
+    def close()
   }
 
-  object Channel {
-    def apply[T]() = new UnbufferedChannel[T]
-  }
+  def channel[T]() = new UnbufferedChannel[T]
+
 
   class UnbufferedChannel[T] extends Channel[T] {
     val mutex = new ReentrantLock
-    val takeq = new mutable.Queue[Promise[T]]
-    val putq = new mutable.Queue[(Promise[Unit], T)]
+    var closed = false
+    val takeq = new mutable.Queue[Promise[Option[T]]]
+    val putq = new mutable.Queue[(Promise[Boolean], T)]
 
-    def put(value: T): Future[Unit] = {
+    def put(value: T): Future[Boolean] = {
       // if waiting takes, pass on, complete
       // if buffer has room, to buffer, complete
       // else queue in puts
+      //if (value == null) throw new IllegalArgumentException
       mutex.lock
       try {
-        if (takeq.isEmpty) {
-          val putp = Promise[Unit]
+        if (closed) {
+          Future.successful(false)
+        }
+        else if (takeq.isEmpty) {
+          val putp = Promise[Boolean]
           putq.enqueue((putp, value))
           putp.future
         }
         // TODO guard against too many in queue
         else {
           val takep = takeq.dequeue
-          takep.success(value)
-          Future.successful()
+          takep.success(Some(value))
+          Future.successful(true)
         }
       }
       finally mutex.unlock
     }
 
-    def take(): Future[T] = {
+    def take(): Future[Option[T]] = {
       // if data in buffer, take, complete, and if puts, add to buffer and complete
       // if no buffer, take from takes
       // else queue take
       mutex.lock
       try {
-        if (putq.isEmpty) {
-          val takep = Promise[T]
+        if (closed) {
+          Future.successful(None)
+        }
+        else if (putq.isEmpty) {
+          val takep = Promise[Option[T]]
           takeq.enqueue(takep)
           takep.future
         }
         // TODO guard against too many in queue
         else {
           val (putp, v) = putq.dequeue()
-          putp.success()
-          Future.successful(v)
+          putp.success(true)
+          Future.successful(Some(v))
+        }
+      }
+      finally mutex.unlock
+    }
+
+    def close() {
+      mutex.lock
+      try {
+        if (!closed) {
+          closed = true
+          for (takep <- takeq.dequeueAll(_ => true)) takep.success(None)
+          for ((putp, _) <- putq.dequeueAll(_ => true)) putp.success(false)
         }
       }
       finally mutex.unlock
@@ -84,7 +104,7 @@ package object asynq {
 
   def main(args: Array[String]) {
     println("start")
-    val c = Channel[Int]()
+    val c = channel[Int]()
     c.put(-7)
     c.put(-4)
     async {
@@ -93,8 +113,8 @@ package object asynq {
         println("got " + i)
       }
     }
-    println("end")
     for (i <- Range(1,10)) c.put(i)
+    println("end")
   }
 
 }
