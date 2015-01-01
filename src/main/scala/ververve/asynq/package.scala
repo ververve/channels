@@ -1,3 +1,20 @@
+/*
+ * Copyright 2015 Scott Abernethy (github @scott-abernethy).
+ * Released under the Eclipse Public License v1.0.
+ *
+ * This program is free software: you can use it, redistribute it and/or modify
+ * it under the terms of the Eclipse Public License v1.0. Use of this software
+ * in any fashion constitutes your acceptance of this license.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * license for more details.
+ *
+ * You should have received a copy of the Eclipse Public License v1.0 along with
+ * this program. If not, see <http://opensource.org/licenses/eclipse-1.0.php>.
+ */
+
 package ververve
 
 import java.util.concurrent.locks.ReentrantLock
@@ -11,6 +28,10 @@ package object asynq {
   trait Channel[T] {
     def put(value: T): Future[Unit]
     def take(): Future[T]
+  }
+
+  object Channel {
+    def apply[T]() = new UnbufferedChannel[T]
   }
 
   class UnbufferedChannel[T] extends Channel[T] {
@@ -29,6 +50,7 @@ package object asynq {
           putq.enqueue((putp, value))
           putp.future
         }
+        // TODO guard against too many in queue
         else {
           val takep = takeq.dequeue
           takep.success(value)
@@ -37,6 +59,7 @@ package object asynq {
       }
       finally mutex.unlock
     }
+
     def take(): Future[T] = {
       // if data in buffer, take, complete, and if puts, add to buffer and complete
       // if no buffer, take from takes
@@ -48,6 +71,7 @@ package object asynq {
           takeq.enqueue(takep)
           takep.future
         }
+        // TODO guard against too many in queue
         else {
           val (putp, v) = putq.dequeue()
           putp.success()
@@ -60,7 +84,7 @@ package object asynq {
 
   def main(args: Array[String]) {
     println("start")
-    val c = new UnbufferedChannel[Int]()
+    val c = Channel[Int]()
     c.put(-7)
     c.put(-4)
     async {
