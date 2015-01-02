@@ -17,9 +17,9 @@
 
 package ververve
 
-import java.util.concurrent.locks.ReentrantLock
+import java.util.concurrent.locks.{Lock, ReentrantLock}
 import scala.collection._
-import scala.concurrent._
+import scala.concurrent.{Promise, Future}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.async.Async.{async, await}
 
@@ -31,15 +31,53 @@ package object asynq {
     def close()
   }
 
-  def channel[T]() = new UnbufferedChannel[T]
-
-  class UnbufferedChannel[T] extends Channel[T] {
-    val mutex = new ReentrantLock
-    var closed = false
-    val takeq = new mutable.Queue[Promise[Option[T]]]
-    val putq = new mutable.Queue[(Promise[Boolean], T)]
+  def channel[T]() = new Channel[T] {
+    val internal = new UnbufferedChannel[T]
 
     def put(value: T): Future[Boolean] = {
+      val req = new SingleRequest[Boolean]
+      internal.put(value, req)
+      req.promise.future
+    }
+
+    def take(): Future[Option[T]] = {
+      val req = new SingleRequest[Option[T]]
+      internal.take(req)
+      req.promise.future
+    }
+
+    def close() {
+      internal.close()
+    }
+  }
+
+  trait Request[R] {
+    def isActive(): Boolean
+    def lockId: Long
+    def lock: Lock
+    def promise: Promise[R]
+  }
+
+  class SingleRequest[R] extends Request[R] {
+    def isActive() = true
+    def lockId = 0
+    def lock = NoopLock
+    val promise = Promise[R]
+  }
+
+  trait ChannelInternal[T] {
+    def put(value: T, req: Request[Boolean])
+    def take(req: Request[Option[T]])
+    def close()
+  }
+
+  class UnbufferedChannel[T] extends ChannelInternal[T] {
+    val mutex = new ReentrantLock
+    var closed = false
+    val takeq = new mutable.Queue[Request[Option[T]]]
+    val putq = new mutable.Queue[(Request[Boolean], T)]
+
+    def put(value: T, req: Request[Boolean]) {
       // if waiting takes, pass on, complete
       // if buffer has room, to buffer, complete
       // else queue in puts
@@ -47,42 +85,38 @@ package object asynq {
       mutex.lock
       try {
         if (closed) {
-          Future.successful(false)
+          req.promise.success(false)
         }
         else if (takeq.isEmpty) {
-          val putp = Promise[Boolean]
-          putq.enqueue((putp, value))
-          putp.future
+          putq.enqueue((req, value))
         }
         // TODO guard against too many in queue
         else {
-          val takep = takeq.dequeue
-          takep.success(Some(value))
-          Future.successful(true)
+          val t = takeq.dequeue
+          t.promise.success(Some(value))
+          req.promise.success(true)
         }
       }
       finally mutex.unlock
     }
 
-    def take(): Future[Option[T]] = {
+    def take(req: Request[Option[T]]) = {
       // if data in buffer, take, complete, and if puts, add to buffer and complete
       // if no buffer, take from takes
       // else queue take
       mutex.lock
       try {
         if (closed) {
-          Future.successful(None)
+          req.promise.success(None)
         }
         else if (putq.isEmpty) {
-          val takep = Promise[Option[T]]
-          takeq.enqueue(takep)
-          takep.future
+          takeq.enqueue(req)
         }
         // TODO guard against too many in queue
         else {
-          val (putp, v) = putq.dequeue()
-          putp.success(true)
-          Future.successful(Some(v))
+          val (p, v) = putq.dequeue()
+          p.promise.success(true)
+          req.promise.success(Some(v))
         }
       }
       finally mutex.unlock
@@ -93,8 +127,8 @@ package object asynq {
       try {
         if (!closed) {
           closed = true
-          for (takep <- takeq.dequeueAll(_ => true)) takep.success(None)
-          for ((putp, _) <- putq.dequeueAll(_ => true)) putp.success(true)
+          for (t <- takeq.dequeueAll(_ => true)) t.promise.success(None)
+          for ((p, _) <- putq.dequeueAll(_ => true)) p.promise.success(true)
         }
       }
       finally mutex.unlock
