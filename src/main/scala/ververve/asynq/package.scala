@@ -33,7 +33,6 @@ package object asynq {
 
   def channel[T]() = new UnbufferedChannel[T]
 
-
   class UnbufferedChannel[T] extends Channel[T] {
     val mutex = new ReentrantLock
     var closed = false
@@ -95,7 +94,7 @@ package object asynq {
         if (!closed) {
           closed = true
           for (takep <- takeq.dequeueAll(_ => true)) takep.success(None)
-          for ((putp, _) <- putq.dequeueAll(_ => true)) putp.success(false)
+          for ((putp, _) <- putq.dequeueAll(_ => true)) putp.success(true)
         }
       }
       finally mutex.unlock

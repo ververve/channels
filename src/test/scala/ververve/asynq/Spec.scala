@@ -53,6 +53,15 @@ class Spec extends FlatSpec with Matchers with ScalaFutures {
     res.futureValue should equal (None)
   }
 
+  it should "complete all pending puts with true" in {
+    val c = channel[Int]()
+    val res = c.put(56)
+    res.isCompleted should equal (false)
+    c.close()
+    res.isCompleted should equal (true)
+    res.futureValue should equal (true)
+  }
+
   it should "complete subsequent takes with none" in {
     val c = channel[Int]()
     c.close()
