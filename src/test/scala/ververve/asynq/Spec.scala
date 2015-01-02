@@ -18,15 +18,50 @@
 package ververve.asynq
 
 import org.scalatest._
+import org.scalatest.concurrent._
 
-class Spec extends FlatSpec with Matchers {
+class Spec extends FlatSpec with Matchers with ScalaFutures {
 
-  "A Channel" should "complete all pending takes" in {
+  "A Channel" should "not put until a taker arrives" in {
+    val c = channel[String]()
+    val put1 = c.put("apple")
+    val put2 = c.put("banana")
+    put1.isCompleted should equal (false)
+    put2.isCompleted should equal (false)
+    c.take
+    put1.isCompleted should equal (true)
+    put1.futureValue should equal (true)
+    put2.isCompleted should equal (false)
+  }
+
+  it should "take puts in order" in {
+    val c = channel[Long]()
+    val take1 = c.take
+    val take2 = c.take
+    c.put(9)
+    c.put(2)
+    take1.futureValue should equal (Some(9))
+    take2.futureValue should equal (Some(2))
+  }
+
+  "A closed Channel" should "complete all pending takes with none" in {
     val c = channel[Int]()
     val res = c.take
     res.isCompleted should equal (false)
     c.close()
     res.isCompleted should equal (true)
+    res.futureValue should equal (None)
   }
 
+  it should "complete subsequent takes with none" in {
+    val c = channel[Int]()
+    c.close()
+    c.take().futureValue should be (None)
+  }
+
+  it should "complete subsequent puts with false" in {
+    val c = channel[Int]()
+    c.close()
+    c.put(88).futureValue should be (false)
+  }
 }
