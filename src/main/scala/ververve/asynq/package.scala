@@ -156,7 +156,6 @@ package object asynq {
             false
           }
         }
-        // TODO guard against too many in queue
         else {
           val (t, q) = takeq.dequeue
           takeq = q
@@ -205,7 +204,6 @@ package object asynq {
             false
           }
         }
-        // TODO guard against too many in queue
         else {
           val ((p, v), q) = putq.dequeue
           putq = q
@@ -243,6 +241,51 @@ package object asynq {
     def cleanup() {
       takeq = takeq.filter(req => req.isActive)
       putq = putq.filter(item => item._1.isActive)
+    }
+  }
+
+  def main(args: Array[String]) {
+    // akka throughput test
+    val repeat = 1000000L
+    val bandwidth = 20L
+    case object Msg
+    val dest = channel[AnyRef]()
+    val reply = channel[AnyRef]()
+
+    // destination
+    async {
+      while (true) {
+        await(dest.take) match {
+          case Some(Msg) => reply.put(Msg)
+          case _ =>
+        }
+      }
+    }
+
+    // client
+    async {
+      val start = System.currentTimeMillis
+      var sent = 0L
+      var received = 0L
+      for (i <- 0L until bandwidth) {
+        dest.put(Msg)
+        sent += 1
+      }
+      while (received < repeat) {
+        await(reply.take) match {
+          case Some(Msg) =>
+            received += 1
+            if (sent < repeat) {
+              dest.put(Msg)
+              sent += 1
+            }
+          case _ =>
+        }
+      }
+      val end = System.currentTimeMillis
+      val duration = end - start
+      val throughput = (repeat / (duration / 1000.0)).intValue
+      println(s"Test took $duration msec ($throughput msg/sec) for $repeat messages with bandwidth of $bandwidth")
     }
   }
 
