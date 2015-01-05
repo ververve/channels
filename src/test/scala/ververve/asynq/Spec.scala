@@ -107,4 +107,25 @@ class Spec extends FlatSpec with Matchers with ScalaFutures {
     put2.isCompleted should equal (true)
     put1.isCompleted should equal (false)
   }
+
+  "A Buffered Channel" should "allow puts to be buffered" in {
+    val c = channel[Int](3)
+    c.put(1) should be ('completed)
+    c.put(2) should be ('completed)
+    c.put(3) should be ('completed)
+    val put4 = c.put(4)
+    val put5 = c.put(5)
+    put4 should not be ('completed)
+    put5 should not be ('completed)
+
+    c.take.futureValue should be (Some(1))
+    put4 should be ('completed)
+    put5 should not be ('completed)
+
+    c.take.futureValue should be (Some(2))
+    c.take.futureValue should be (Some(3))
+    c.take.futureValue should be (Some(4))
+    c.take.futureValue should be (Some(5))
+    c.take should not be ('completed)
+  }
 }

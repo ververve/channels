@@ -38,8 +38,12 @@ package object asynq {
     def take(req: Request[Option[T]]): Boolean
   }
 
-  def channel[T]() = new Channel[T] {
-    val internal = new UnbufferedChannel[T]
+  def channel[T]() = createChannel[T](null)
+
+  def channel[T](buffer: Int) = createChannel(new FixedBuffer[T](buffer))
+
+  def createChannel[T](buffer: Buffer[T]) = new Channel[T] {
+    val internal = new ChannelInternal[T](buffer)
 
     def put(value: T): Future[Boolean] = {
       val req = new SingleRequest[Boolean]
@@ -120,35 +124,45 @@ package object asynq {
     val promise = Promise[R]
   }
 
-  trait ChannelInternal[T] {
-    def put(value: T, req: Request[Boolean]): Boolean
-    def take(req: Request[Option[T]]): Boolean
-    def close()
+  def withLock[W](lock: Lock)(block: => W): W = {
+    lock.lock
+    try block
+    finally lock.unlock
+  }
+  def withLock[W,R](req: Request[R])(block: Request[R] => W): W = {
+    req.lock
+    try block(req)
+    finally req.unlock
+  }
+  def succeed[R](req: Request[R], result: => R): Boolean = {
+    if (req.isActive) {
+      req.setInactive
+      req.promise.success(result)
+      true
+    } else {
+      false
+    }
   }
 
-  class UnbufferedChannel[T] extends ChannelInternal[T] {
+  class ChannelInternal[T](buffer: Buffer[T]) {
     val mutex = new ReentrantLock
     var closed = false
     var takeq = Queue[Request[Option[T]]]()
     var putq = Queue[(Request[Boolean], T)]()
 
     def put(value: T, req: Request[Boolean]): Boolean = {
-      // if waiting takes, pass on, complete
-      // if buffer has room, to buffer, complete
-      // else queue in puts
-      mutex.lock
-      cleanup
-      try {
+      withLock(mutex){
+        cleanup
         if (closed) {
-          req.lock
-          try {
-            req.setInactive
-            req.promise.success(false) }
-          finally req.unlock
-          true
+          withLock(req)(succeed(_, false))
         }
         else if (takeq.isEmpty) {
-          if (putq.size >= ChannelWaitingRequestLimit) {
+          if (buffer != null && !buffer.isFull) {
+            withLock(req){
+              buffer.add(value)
+              succeed(_, true)
+            }
+          } else if (putq.size >= ChannelWaitingRequestLimit) {
             req.promise.failure(new IllegalStateException)
             false
           } else {
@@ -159,74 +173,49 @@ package object asynq {
         else {
           val (t, q) = takeq.dequeue
           takeq = q
-          t.lock
-          try {
-            t.setInactive
-            t.promise.success(Some(value))
-          }
-          finally t.unlock
-          req.lock
-          try {
-            req.setInactive
-            req.promise.success(true)
-          }
-          finally req.unlock
-          true
+          withLock(t)(succeed(_, Some(value)))
+          withLock(req)(succeed(_, true))
         }
       }
-      finally mutex.unlock
     }
 
     def take(req: Request[Option[T]]): Boolean = {
-      // if data in buffer, take, complete, and if puts, add to buffer and complete
-      // if no buffer, take from takes
-      // else queue take
-      mutex.lock
-      cleanup
-      try {
+      withLock(mutex){
+        cleanup
         if (closed) {
-          req.lock
-          try {
-            if (req.isActive) {
-              req.setInactive
-              req.promise.success(None)
-              true
+          withLock(req)(succeed(_, None))
+        } else if (buffer != null && buffer.size > 0) {
+          val res = withLock(req)(succeed(_, unbuffer))
+          while (!buffer.isFull && !putq.isEmpty) {
+            dequeuePut match {
+              case Some(v) => buffer.add(v)
+              case None =>
             }
-            else false
-          } finally req.unlock
-        }
-        else if (putq.isEmpty) {
-          if (takeq.size >= ChannelWaitingRequestLimit) {
-            req.promise.failure(new IllegalStateException)
-            false
-          } else {
-            takeq = takeq.enqueue(req)
-            false
+          }
+          res
+        } else {
+          var res: Option[T] = None
+          while (!putq.isEmpty && !res.isDefined) {
+            res = dequeuePut
+          }
+          res match {
+            case Some(v) =>
+              withLock(req)(succeed(_, Some(v)))
+            case None =>
+              if (takeq.size >= ChannelWaitingRequestLimit) {
+                req.promise.failure(new IllegalStateException)
+              } else {
+                takeq = takeq.enqueue(req)
+              }
+              false
           }
         }
-        else {
-          val ((p, v), q) = putq.dequeue
-          putq = q
-          p.lock
-          try {
-            p.setInactive
-            p.promise.success(true)
-          } finally p.unlock
-          req.lock
-          try {
-            req.setInactive
-            req.promise.success(Some(v))
-          } finally req.unlock
-          true
-        }
       }
-      finally mutex.unlock
     }
 
     def close() {
-      mutex.lock
-      cleanup
-      try {
+      withLock(mutex){
+        cleanup
         if (!closed) {
           closed = true
           for (t <- takeq.toSeq) t.promise.success(None)
@@ -235,13 +224,22 @@ package object asynq {
           putq = Queue()
         }
       }
-      finally mutex.unlock
     }
 
     def cleanup() {
       takeq = takeq.filter(req => req.isActive)
       putq = putq.filter(item => item._1.isActive)
     }
+
+    def unbuffer(): Option[T] = Some(buffer.remove)
+
+    def dequeuePut(): Option[T] = {
+      val ((p, v), q) = putq.dequeue
+      putq = q
+      if (withLock(p)(succeed(_, true))) Some(v)
+      else None
+    }
+
   }
 
   def main(args: Array[String]) {
