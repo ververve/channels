@@ -17,6 +17,7 @@
 
 package ververve
 
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.{Lock, ReentrantLock}
 import scala.collection.immutable.Queue
@@ -243,48 +244,58 @@ package object asynq {
   }
 
   def main(args: Array[String]) {
-    // akka throughput test
-    val repeat = 1000000L
-    val bandwidth = 20L
+    // akka-like throughput test
+    val machines = 8
+    val repeat = 40000000L
+    val repeatPerMachine = repeat / machines
+    val bandwidth = 9
     case object Msg
-    val dest = channel[AnyRef]()
-    val reply = channel[AnyRef]()
+    val doneSignal = new CountDownLatch(machines)
 
-    // destination
-    async {
-      while (true) {
-        await(dest.take) match {
-          case Some(Msg) => reply.put(Msg)
-          case _ =>
+    val start = System.currentTimeMillis
+
+    for (i <- 0 until machines) {
+      val dest = channel[AnyRef](bandwidth)
+      val reply = channel[AnyRef](bandwidth)
+
+      // destination
+      async {
+        while (true) {
+          await(dest.take) match {
+            case Some(Msg) => reply.put(Msg)
+            case _ =>
+          }
         }
+      }
+
+      // client
+      async {
+        var sent = 0L
+        var received = 0L
+        for (i <- 0 until bandwidth) {
+          dest.put(Msg)
+          sent += 1
+        }
+        while (received < repeatPerMachine) {
+          await(reply.take) match {
+            case Some(Msg) =>
+              received += 1
+              if (sent < repeatPerMachine) {
+                dest.put(Msg)
+                sent += 1
+              }
+            case _ =>
+          }
+        }
+        doneSignal.countDown
       }
     }
 
-    // client
-    async {
-      val start = System.currentTimeMillis
-      var sent = 0L
-      var received = 0L
-      for (i <- 0L until bandwidth) {
-        dest.put(Msg)
-        sent += 1
-      }
-      while (received < repeat) {
-        await(reply.take) match {
-          case Some(Msg) =>
-            received += 1
-            if (sent < repeat) {
-              dest.put(Msg)
-              sent += 1
-            }
-          case _ =>
-        }
-      }
-      val end = System.currentTimeMillis
-      val duration = end - start
-      val throughput = (repeat / (duration / 1000.0)).intValue
-      println(s"Test took $duration msec ($throughput msg/sec) for $repeat messages with bandwidth of $bandwidth")
-    }
+    doneSignal.await()
+    val end = System.currentTimeMillis
+    val duration = end - start
+    val throughput = (repeat / (duration / 1000.0)).intValue
+    println(s"Test took $duration msec ($throughput msg/sec) for $repeat messages with bandwidth of $bandwidth on $machines vmachines")
   }
 
 }

@@ -128,4 +128,11 @@ class Spec extends FlatSpec with Matchers with ScalaFutures {
     c.take.futureValue should be (Some(5))
     c.take should not be ('completed)
   }
+
+  it should "allow takes to proceed without buffering" in {
+    val c = channel[String](3)
+    val take = c.take
+    c.put("Joy")
+    take.futureValue should be (Some("Joy"))
+  }
 }
