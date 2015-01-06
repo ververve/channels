@@ -41,7 +41,7 @@ package object asynq {
 
   def channel[T]() = createChannel[T](null)
 
-  def channel[T](buffer: Int) = createChannel(new FixedBuffer[T](buffer))
+  def channel[T](buffer: Int) = if (buffer > 0) createChannel(new FixedBuffer[T](buffer)) else createChannel[T](null)
 
   def createChannel[T](buffer: Buffer[T]) = new Channel[T] {
     val internal = new ChannelInternal[T](buffer)
@@ -249,14 +249,15 @@ package object asynq {
     val repeat = 40000000L
     val repeatPerMachine = repeat / machines
     val bandwidth = 9
+    val buffered = 10
     case object Msg
     val doneSignal = new CountDownLatch(machines)
 
     val start = System.currentTimeMillis
 
     for (i <- 0 until machines) {
-      val dest = channel[AnyRef](bandwidth)
-      val reply = channel[AnyRef](bandwidth)
+      val dest = channel[AnyRef](buffered)
+      val reply = channel[AnyRef](buffered)
 
       // destination
       async {
