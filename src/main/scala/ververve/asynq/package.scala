@@ -17,11 +17,10 @@
 
 package ververve
 
-// import java.util.LinkedList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.{Lock, ReentrantLock}
-import scala.collection.immutable.Queue
+import scala.collection.mutable.Queue
 import scala.concurrent.{Promise, Future, Await}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.async.Async.{async, await}
@@ -149,8 +148,8 @@ package object asynq {
   class ChannelInternal[T](buffer: Buffer[T]) {
     val mutex = new ReentrantLock
     var closed = false
-    var takeq = Queue[Request[Option[T]]]()
-    var putq = Queue[(Request[Boolean], T)]()
+    lazy val takeq = new Queue[Request[Option[T]]]()
+    lazy val putq = new Queue[(Request[Boolean], T)]()
 
     def put(value: T, req: Request[Boolean]): Boolean = {
       withLock(mutex){
@@ -158,25 +157,27 @@ package object asynq {
         if (closed) {
           withLock(req)(succeed(_, false))
         }
-        else if (takeq.isEmpty) {
-          if (buffer != null && !buffer.isFull) {
-            withLock(req){
-              buffer.add(value)
-              succeed(_, true)
-            }
-          } else if (putq.size >= ChannelWaitingRequestLimit) {
-            req.promise.failure(new IllegalStateException)
-            false
-          } else {
-            putq = putq.enqueue((req, value))
-            false
-          }
-        }
         else {
-          val (t, q) = takeq.dequeue
-          takeq = q
-          withLock(t)(succeed(_, Some(value)))
-          withLock(req)(succeed(_, true))
+          var suc: Boolean = false
+          while (!takeq.isEmpty && !suc) {
+            suc = dequeueTake(value)
+          }
+          if (suc) {
+            withLock(req)(succeed(_, true))
+          } else {
+            if (buffer != null && !buffer.isFull) {
+              withLock(req){
+                buffer.add(value)
+                succeed(_, true)
+              }
+            } else if (putq.size >= ChannelWaitingRequestLimit) {
+              req.promise.failure(new IllegalStateException)
+              false
+            } else {
+              putq.enqueue((req, value))
+              false
+            }
+          }
         }
       }
     }
@@ -207,7 +208,7 @@ package object asynq {
               if (takeq.size >= ChannelWaitingRequestLimit) {
                 req.promise.failure(new IllegalStateException)
               } else {
-                takeq = takeq.enqueue(req)
+                takeq.enqueue(req)
               }
               false
           }
@@ -217,42 +218,46 @@ package object asynq {
 
     def close() {
       withLock(mutex){
-        cleanup
         if (!closed) {
           closed = true
-          for (t <- takeq.toSeq) t.promise.success(None)
-          for ((p, _) <- putq.toSeq) p.promise.success(true)
-          takeq = Queue()
-          putq = Queue()
         }
+        for (t <- takeq.toSeq; if t.isActive) t.promise.success(None)
+        for ((p, _) <- putq.toSeq; if p.isActive) p.promise.success(true)
+        takeq.clear
+        putq.clear
       }
     }
 
     def cleanup() {
-      takeq = takeq.filter(req => req.isActive)
-      putq = putq.filter(item => item._1.isActive)
+      // TODO this is inefficient, does it need to be done?
+      // takeq = takeq.filter(req => req.isActive)
+      // putq = putq.filter(item => item._1.isActive)
     }
 
     def unbuffer(): Option[T] = Some(buffer.remove)
 
     def dequeuePut(): Option[T] = {
-      val ((p, v), q) = putq.dequeue
-      putq = q
+      val (p, v) = putq.dequeue
       if (withLock(p)(succeed(_, true))) Some(v)
       else None
+    }
+
+    def dequeueTake(v: T): Boolean = {
+      val t = takeq.dequeue
+      withLock(t)(succeed(_, Some(v)))
     }
 
   }
 
   def main(args: Array[String]) {
-    // throughputTest
+    throughputTest
     sequenceTest
   }
 
   def throughputTest {
     // akka-like throughput test
     val machines = 8
-    val repeat = 40000000L
+    val repeat = 160000000L
     val repeatPerMachine = repeat / machines
     val bandwidth = 9
     val buffered = 10
