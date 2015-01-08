@@ -17,13 +17,10 @@
 
 package ververve
 
-import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.{Lock, ReentrantLock}
 import scala.collection.mutable.Queue
-import scala.concurrent.{Promise, Future, Await}
-import scala.concurrent.ExecutionContext.Implicits.global
-import scala.async.Async.{async, await}
+import scala.concurrent.{ExecutionContext, Promise, Future, Await}
 
 package object asynq {
 
@@ -72,7 +69,7 @@ package object asynq {
     }
   }
 
-  def alts[T](channels: Channel[T]*): Future[Option[T]] = {
+  def alts[T](channels: Channel[T]*)(implicit executor: ExecutionContext): Future[Option[T]] = {
     val flag = new SharedRequestFlag
     val init: Either[List[Future[Option[T]]], Future[Option[T]]] = Left(Nil)
     val future = channels.foldLeft(init){ (acc, c) =>
@@ -158,7 +155,7 @@ package object asynq {
           withLock(req)(succeed(_, false))
         }
         else {
-          var suc: Boolean = false
+          var suc = false
           while (!takeq.isEmpty && !suc) {
             suc = dequeueTake(value)
           }
@@ -250,86 +247,13 @@ package object asynq {
   }
 
   def main(args: Array[String]) {
-    throughputTest
-    sequenceTest
-  }
-
-  def throughputTest {
-    // akka-like throughput test
-    val machines = 8
-    val repeat = 160000000L
-    val repeatPerMachine = repeat / machines
-    val bandwidth = 9
-    val buffered = 10
-    case object Msg
-    val doneSignal = new CountDownLatch(machines)
-
-    val start = System.currentTimeMillis
-
-    for (i <- 0 until machines) {
-      val dest = channel[AnyRef](buffered)
-      val reply = channel[AnyRef](buffered)
-
-      // destination
-      async {
-        while (true) {
-          await(dest.take) match {
-            case Some(Msg) => reply.put(Msg)
-            case _ =>
-          }
-        }
-      }
-
-      // client
-      async {
-        var sent = 0L
-        var received = 0L
-        for (i <- 0 until bandwidth) {
-          dest.put(Msg)
-          sent += 1
-        }
-        while (received < repeatPerMachine) {
-          await(reply.take) match {
-            case Some(Msg) =>
-              received += 1
-              if (sent < repeatPerMachine) {
-                dest.put(Msg)
-                sent += 1
-              }
-            case _ =>
-          }
-        }
-        doneSignal.countDown
-      }
-    }
-
-    doneSignal.await()
-    val end = System.currentTimeMillis
-    val duration = end - start
-    val throughput = (repeat / (duration / 1000.0)).intValue
-    println(s"Test took $duration msec ($throughput msg/sec) for $repeat messages with bandwidth of $bandwidth on $machines vmachines")
-  }
-
-  def sequenceTest {
-    // sequence test
-    val length = 100000
-    val start = System.currentTimeMillis
-    val first = channel[Int]()
-    var last = first
-    for (i <- 0 until length) {
-      val dest = channel[Int]()
-      val src = last
-      async {
-        val v = await(src.take)
-        dest.put(v.get + 1)
-      }
-      last = dest
-    }
-    first.put(1)
-    val res = Await.result(last.take, scala.concurrent.duration.Duration("15 seconds"))
-    val end = System.currentTimeMillis
-    val duration = end - start
-    println(s"Sequence test length $length took duration $duration msec, got $res")
+    import scala.concurrent.ExecutionContext.Implicits.global
+    val c1 = channel[Int]()
+    val c2 = channel[Int]()
+    val res = alts(c1, c2)
+    val put2 = c2.put(2)
+    val put1 = c1.put(1)
+    res.onSuccess{case x => println(x)}
   }
 
 }

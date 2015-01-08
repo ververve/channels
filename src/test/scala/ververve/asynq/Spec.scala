@@ -75,6 +75,7 @@ class Spec extends FlatSpec with Matchers with ScalaFutures {
   }
 
   "An Alts" should "select the first result if possible immediately" in {
+    import scala.concurrent.ExecutionContext.Implicits.global
     val c1 = channel[String]()
     val c2 = channel[String]()
     c1.put("rabbit")
@@ -83,7 +84,8 @@ class Spec extends FlatSpec with Matchers with ScalaFutures {
     res.futureValue should equal (Some("rabbit"))
   }
 
-  it should "select the in order of argument the first result that is possible immediately" in {
+  it should "select in order of argument the first result that is possible immediately" in {
+    import scala.concurrent.ExecutionContext.Implicits.global
     val c1 = channel[String]()
     val c2 = channel[String]()
     val c3 = channel[String]()
@@ -96,13 +98,17 @@ class Spec extends FlatSpec with Matchers with ScalaFutures {
     c3.take.futureValue should equal (Some("tree"))
   }
 
-  it should "only select one alternative" in {
+  it should "only select one alternative when available" in {
+    import scala.concurrent.ExecutionContext.Implicits.global
+    // implicit val defaultPatience = PatienceConfig(timeout = Span(2, Seconds), interval = Span(5, Millis))
     val c1 = channel[Int]()
     val c2 = channel[Int]()
     val res = alts(c1, c2)
     res.isCompleted should be (false)
     val put2 = c2.put(2)
     val put1 = c1.put(1)
+    import org.scalatest.time.SpanSugar._
+    assert(res.isReadyWithin(5000 millis)) // why does this take so long?
     res.futureValue should equal (Some(2))
     put2.isCompleted should equal (true)
     put1.isCompleted should equal (false)
