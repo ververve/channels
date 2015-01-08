@@ -69,15 +69,24 @@ package object asynq {
     }
   }
 
-  def alts[T](channels: Channel[T]*)(implicit executor: ExecutionContext): Future[Option[T]] = {
+  sealed trait AltOption[T]
+  case class PutAlt[T](c: Channel[T], value: T) extends AltOption[T]
+  case class TakeAlt[T](c: Channel[T]) extends AltOption[T]
+
+  def alts[T](options: AltOption[T]*)(implicit executor: ExecutionContext): Future[Any] = {
     val flag = new SharedRequestFlag
-    val init: Either[List[Future[Option[T]]], Future[Option[T]]] = Left(Nil)
-    val future = channels.foldLeft(init){ (acc, c) =>
+    val init: Either[List[Future[Any]], Future[Any]] = Left(Nil)
+    val future = options.foldLeft(init){ (acc, option) =>
       acc match {
         case Left(fs) =>
-          val req = new SharedRequest[Option[T]](flag)
-          val complete = c.take(req)
-          val f = req.promise.future
+          val (f, complete) = option match {
+            case PutAlt(c, v) =>
+              val req = new SharedRequest[Boolean](flag)
+              (req.promise.future, c.put(v, req))
+            case TakeAlt(c) =>
+              val req = new SharedRequest[Option[T]](flag)
+              (req.promise.future, c.take(req))
+          }
           if (complete) Right(f)
           else Left(f :: fs)
         case f @ Right(_) => f
@@ -250,7 +259,7 @@ package object asynq {
     import scala.concurrent.ExecutionContext.Implicits.global
     val c1 = channel[Int]()
     val c2 = channel[Int]()
-    val res = alts(c1, c2)
+    val res = alts(TakeAlt(c1), TakeAlt(c2))
     val put2 = c2.put(2)
     val put1 = c1.put(1)
     res.onSuccess{case x => println(x)}

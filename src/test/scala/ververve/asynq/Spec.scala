@@ -19,6 +19,8 @@ package ververve.asynq
 
 import org.scalatest._
 import org.scalatest.concurrent._
+import org.scalatest.time.SpanSugar._
+import scala.concurrent.ExecutionContext.Implicits.global
 
 class Spec extends FlatSpec with Matchers with ScalaFutures {
 
@@ -74,40 +76,61 @@ class Spec extends FlatSpec with Matchers with ScalaFutures {
     c.put(88).futureValue should be (false)
   }
 
-  "An Alts" should "select the first result if possible immediately" in {
-    import scala.concurrent.ExecutionContext.Implicits.global
+  "An Alts" should "select the first result if possible immediately, take option" in {
     val c1 = channel[String]()
     val c2 = channel[String]()
     c1.put("rabbit")
     c2.put("noise")
-    val res = alts(c1, c2)
+    val res = alts(TakeAlt(c1), TakeAlt(c2))
     res.futureValue should equal (Some("rabbit"))
   }
 
+  it should "select the first result if possible immediately, put option" in {
+    val c1 = channel[String]()
+    val c2 = channel[String]()
+    val take1 = c1.take
+    val take2 = c2.take
+    val res = alts(PutAlt(c1, "rabbit"), PutAlt(c2, "noise"))
+    res.futureValue should equal (true)
+    take1.futureValue should equal (Some("rabbit"))
+    take2.isReadyWithin(1000 millis) should be (false)
+  }
+
   it should "select in order of argument the first result that is possible immediately" in {
-    import scala.concurrent.ExecutionContext.Implicits.global
     val c1 = channel[String]()
     val c2 = channel[String]()
     val c3 = channel[String]()
     c2.put("noise")
     c2.put("silence")
     c3.put("tree")
-    val res = alts(c1, c2, c3)
+    val res = alts(TakeAlt(c1), TakeAlt(c2), TakeAlt(c3))
     res.futureValue should equal (Some("noise"))
     c2.take.futureValue should equal (Some("silence"))
     c3.take.futureValue should equal (Some("tree"))
   }
 
-  it should "only select one alternative when available" in {
-    import scala.concurrent.ExecutionContext.Implicits.global
+  it should "only select one alternative when available, take option" in {
     // implicit val defaultPatience = PatienceConfig(timeout = Span(2, Seconds), interval = Span(5, Millis))
     val c1 = channel[Int]()
     val c2 = channel[Int]()
-    val res = alts(c1, c2)
+    val res = alts(TakeAlt(c1), TakeAlt(c2))
     res.isCompleted should be (false)
     val put2 = c2.put(2)
     val put1 = c1.put(1)
-    import org.scalatest.time.SpanSugar._
+    assert(res.isReadyWithin(5000 millis)) // why does this take so long?
+    res.futureValue should equal (Some(2))
+    put2.isCompleted should equal (true)
+    put1.isCompleted should equal (false)
+  }
+
+  it should "only select one alternative when available, put option" in {
+    // implicit val defaultPatience = PatienceConfig(timeout = Span(2, Seconds), interval = Span(5, Millis))
+    val c1 = channel[Int]()
+    val c2 = channel[Int]()
+    val res = alts(TakeAlt(c1), TakeAlt(c2))
+    res.isCompleted should be (false)
+    val put2 = c2.put(2)
+    val put1 = c1.put(1)
     assert(res.isReadyWithin(5000 millis)) // why does this take so long?
     res.futureValue should equal (Some(2))
     put2.isCompleted should equal (true)
