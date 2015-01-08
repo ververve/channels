@@ -73,6 +73,9 @@ package object asynq {
   case class PutAlt[T](c: Channel[T], value: T) extends AltOption[T]
   case class TakeAlt[T](c: Channel[T]) extends AltOption[T]
 
+  implicit def chanTakeAltOption[T](c: Channel[T]): TakeAlt[T] = TakeAlt(c)
+  implicit def tuplePutAltOption[T](put: Tuple2[T, Channel[T]]): PutAlt[T] = PutAlt(put._2, put._1)
+
   def alts[T](options: AltOption[T]*)(implicit executor: ExecutionContext): Future[Any] = {
     val flag = new SharedRequestFlag
     val init: Either[List[Future[Any]], Future[Any]] = Left(Nil)
@@ -253,16 +256,6 @@ package object asynq {
       withLock(t)(succeed(_, Some(v)))
     }
 
-  }
-
-  def main(args: Array[String]) {
-    import scala.concurrent.ExecutionContext.Implicits.global
-    val c1 = channel[Int]()
-    val c2 = channel[Int]()
-    val res = alts(TakeAlt(c1), TakeAlt(c2))
-    val put2 = c2.put(2)
-    val put1 = c1.put(1)
-    res.onSuccess{case x => println(x)}
   }
 
 }

@@ -20,6 +20,7 @@ package ververve.asynq
 import org.scalatest._
 import org.scalatest.concurrent._
 import org.scalatest.time.SpanSugar._
+import org.scalatest.concurrent.PatienceConfiguration._
 import scala.concurrent.ExecutionContext.Implicits.global
 
 class Spec extends FlatSpec with Matchers with ScalaFutures {
@@ -81,7 +82,7 @@ class Spec extends FlatSpec with Matchers with ScalaFutures {
     val c2 = channel[String]()
     c1.put("rabbit")
     c2.put("noise")
-    val res = alts(TakeAlt(c1), TakeAlt(c2))
+    val res = alts(c1, c2)
     res.futureValue should equal (Some("rabbit"))
   }
 
@@ -90,7 +91,7 @@ class Spec extends FlatSpec with Matchers with ScalaFutures {
     val c2 = channel[String]()
     val take1 = c1.take
     val take2 = c2.take
-    val res = alts(PutAlt(c1, "rabbit"), PutAlt(c2, "noise"))
+    val res = alts("rabbit" -> c1, "noise" -> c2)
     res.futureValue should equal (true)
     take1.futureValue should equal (Some("rabbit"))
     take2.isReadyWithin(1000 millis) should be (false)
@@ -103,7 +104,7 @@ class Spec extends FlatSpec with Matchers with ScalaFutures {
     c2.put("noise")
     c2.put("silence")
     c3.put("tree")
-    val res = alts(TakeAlt(c1), TakeAlt(c2), TakeAlt(c3))
+    val res = alts(c1, c2, c3)
     res.futureValue should equal (Some("noise"))
     c2.take.futureValue should equal (Some("silence"))
     c3.take.futureValue should equal (Some("tree"))
@@ -113,12 +114,11 @@ class Spec extends FlatSpec with Matchers with ScalaFutures {
     // implicit val defaultPatience = PatienceConfig(timeout = Span(2, Seconds), interval = Span(5, Millis))
     val c1 = channel[Int]()
     val c2 = channel[Int]()
-    val res = alts(TakeAlt(c1), TakeAlt(c2))
+    val res = alts(c1, c2)
     res.isCompleted should be (false)
     val put2 = c2.put(2)
     val put1 = c1.put(1)
-    assert(res.isReadyWithin(5000 millis)) // why does this take so long?
-    res.futureValue should equal (Some(2))
+    res.futureValue(Timeout(5000 millis)) should equal (Some(2))
     put2.isCompleted should equal (true)
     put1.isCompleted should equal (false)
   }
@@ -127,14 +127,13 @@ class Spec extends FlatSpec with Matchers with ScalaFutures {
     // implicit val defaultPatience = PatienceConfig(timeout = Span(2, Seconds), interval = Span(5, Millis))
     val c1 = channel[Int]()
     val c2 = channel[Int]()
-    val res = alts(TakeAlt(c1), TakeAlt(c2))
+    val res = alts(1 -> c1, 2 -> c2)
     res.isCompleted should be (false)
-    val put2 = c2.put(2)
-    val put1 = c1.put(1)
-    assert(res.isReadyWithin(5000 millis)) // why does this take so long?
-    res.futureValue should equal (Some(2))
-    put2.isCompleted should equal (true)
-    put1.isCompleted should equal (false)
+    val take2 = c2.take
+    val take1 = c1.take
+    res.futureValue(Timeout(5000 millis)) should equal (true)
+    take2.isCompleted should equal (true)
+    take1.isCompleted should equal (false)
   }
 
   "A Buffered Channel" should "allow puts to be buffered" in {
