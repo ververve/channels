@@ -27,22 +27,22 @@ import java.util.concurrent.locks.{Lock, ReentrantLock}
 trait Channel[T] {
 
   /**
-   * Put.
+   * Put a value into this channel.
    */
   def put(value: T): Future[Boolean]
 
   /**
-   * Blocking put.
+   * Blocking put a value into this channel.
    */
   def put_!(value: T): Boolean
 
   /**
-   * Take.
+   * Take a value from this channel.
    */
   def take(): Future[Option[T]]
 
   /**
-   * Blocking take.
+   * Blocking take a value from this channel.
    */
   def take_!(): Option[T]
 
@@ -81,13 +81,15 @@ class ChannelInternal[T](buffer: Buffer[T]) extends Channel[T] {
               buffer.add(value)
               succeed(_, true)
             }
-            } else if (putq.size >= ChannelWaitingRequestLimit) {
+          } else {
+            validatePutq
+            if (putq.size >= ChannelWaitingRequestLimit) {
               req.promise.failure(new IllegalStateException)
-              false
             } else {
               putq.enqueue((req, value))
-              false
             }
+            false
+          }
         }
       }
     }
@@ -115,10 +117,13 @@ class ChannelInternal[T](buffer: Buffer[T]) extends Channel[T] {
           case None =>
             if (closed) {
               withLock(req)(succeed(_, None))
-            } else if (takeq.size >= ChannelWaitingRequestLimit) {
-              req.promise.failure(new IllegalStateException)
             } else {
-              takeq.enqueue(req)
+              validateTakeq
+              if (takeq.size >= ChannelWaitingRequestLimit) {
+                req.promise.failure(new IllegalStateException)
+              } else {
+                takeq.enqueue(req)
+              }
             }
             false
         }
@@ -167,6 +172,21 @@ class ChannelInternal[T](buffer: Buffer[T]) extends Channel[T] {
   private def dequeueTake(v: T): Boolean = {
     val t = takeq.dequeue
     withLock(t)(succeed(_, Some(v)))
+  }
+
+  private def validatePutq() {
+    putq.dequeueFirst{ i =>
+      val (p, _) = i
+      // lock not needed
+      withLock(p)(!_.isActive)
+    }
+  }
+
+  private def validateTakeq() {
+    takeq.dequeueFirst{ t =>
+      // lock not needed
+      withLock(t)(!_.isActive)
+    }
   }
 
   private def withLock[W](lock: Lock)(block: => W): W = {
