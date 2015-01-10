@@ -56,13 +56,12 @@ class Spec extends FlatSpec with Matchers with ScalaFutures {
     res.futureValue should equal (None)
   }
 
-  it should "complete all pending puts with true" in {
+  it should "not complete pending puts" in {
     val c = channel[Int]()
     val res = c.put(56)
     res.isCompleted should equal (false)
     c.close()
-    res.isCompleted should equal (true)
-    res.futureValue should equal (true)
+    res.isCompleted should equal (false)
   }
 
   it should "complete subsequent takes with none" in {
@@ -75,6 +74,23 @@ class Spec extends FlatSpec with Matchers with ScalaFutures {
     val c = channel[Int]()
     c.close()
     c.put(88).futureValue should be (false)
+  }
+
+  it should "allow buffered or awaiting puts to be taken" in {
+    val c = channel[Int](3)
+    c.put(8)
+    c.put(31)
+    c.put(2)
+    c.put(4) // not complete
+    c.close()
+    c.put(23) // ignored
+    c.take().futureValue should be (Some(8))
+    c.take().futureValue should be (Some(31))
+    c.take().futureValue should be (Some(2))
+    c.take().futureValue should be (Some(4))
+    c.take().futureValue should be (None)
+    c.put(99)
+    c.take().futureValue should be (None)
   }
 
   "An Alts" should "select the first result if possible immediately, take option" in {

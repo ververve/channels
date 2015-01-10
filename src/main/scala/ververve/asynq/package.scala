@@ -194,9 +194,7 @@ package object asynq {
     def take(req: Request[Option[T]]): Boolean = {
       withLock(mutex){
         cleanup
-        if (closed) {
-          withLock(req)(succeed(_, None))
-        } else if (buffer != null && buffer.size > 0) {
+        if (buffer != null && buffer.size > 0) {
           val res = withLock(req)(succeed(_, unbuffer))
           while (!buffer.isFull && !putq.isEmpty) {
             dequeuePut match {
@@ -214,7 +212,9 @@ package object asynq {
             case Some(v) =>
               withLock(req)(succeed(_, Some(v)))
             case None =>
-              if (takeq.size >= ChannelWaitingRequestLimit) {
+              if (closed) {
+                withLock(req)(succeed(_, None))
+              } else if (takeq.size >= ChannelWaitingRequestLimit) {
                 req.promise.failure(new IllegalStateException)
               } else {
                 takeq.enqueue(req)
@@ -231,9 +231,7 @@ package object asynq {
           closed = true
         }
         for (t <- takeq.toSeq; if t.isActive) t.promise.success(None)
-        for ((p, _) <- putq.toSeq; if p.isActive) p.promise.success(true)
         takeq.clear
-        putq.clear
       }
     }
 
