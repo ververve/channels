@@ -22,7 +22,7 @@ import java.util.concurrent.locks.{Lock, ReentrantLock}
 import scala.collection.mutable.Queue
 import scala.concurrent.{ExecutionContext, Promise, Future, Await}
 
-package object asynq {
+package object channels {
 
   val ChannelWaitingRequestLimit = 512
 

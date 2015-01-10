@@ -1,4 +1,4 @@
-# Asynq
+# Async-Channels
 
 ## License
 

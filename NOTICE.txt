@@ -1,4 +1,4 @@
-Asynq.
+Async-Channels.
 Copyright 2015 Scott Abernethy (github @scott-abernethy).
 Released under the Eclipse Public License v1.0.
 

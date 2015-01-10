@@ -1,7 +1,7 @@
 lazy val root = (project in file(".")).
   settings(
-    name := "asynq",
-    version := "1.0",
+    name := "async-channels",
+    version := "0.1",
     scalaVersion := "2.11.4"
   )
 
