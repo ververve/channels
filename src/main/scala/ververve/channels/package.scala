@@ -30,43 +30,19 @@ package object channels {
     def put(value: T): Future[Boolean]
     def take(): Future[Option[T]]
     def close()
-
-    // TODO hide
-    def put(value: T, req: Request[Boolean]): Boolean
-    def take(req: Request[Option[T]]): Boolean
+    private[channels] def put(value: T, req: Request[Boolean]): Boolean
+    private[channels] def take(req: Request[Option[T]]): Boolean
   }
 
-  def channel[T]() = createChannel[T](null)
+  def channel[T]() = {
+    new ChannelInternal[T](null)
+  }
 
-  def channel[T](buffer: Int) = if (buffer > 0) createChannel(new FixedBuffer[T](buffer)) else createChannel[T](null)
-
-  def createChannel[T](buffer: Buffer[T]) = new Channel[T] {
-    val internal = new ChannelInternal[T](buffer)
-
-    def put(value: T): Future[Boolean] = {
-      val req = new SingleRequest[Boolean]
-      internal.put(value, req)
-      req.promise.future
-    }
-
-    def take(): Future[Option[T]] = {
-      val req = new SingleRequest[Option[T]]
-      internal.take(req)
-      req.promise.future
-    }
-
-    def close() {
-      internal.close()
-    }
-
-    // TODO hide
-    def put(value: T, req: Request[Boolean]): Boolean = {
-      internal.put(value, req)
-    }
-
-    def take(req: Request[Option[T]]): Boolean = {
-      internal.take(req)
-    }
+  def channel[T](buffer: Int) = {
+    val bufferImpl =
+      if (buffer > 0) new FixedBuffer[T](buffer)
+      else null
+    new ChannelInternal[T](bufferImpl)
   }
 
   sealed trait AltOption[T]
@@ -134,17 +110,19 @@ package object channels {
     val promise = Promise[R]
   }
 
-  def withLock[W](lock: Lock)(block: => W): W = {
+  private[channels] def withLock[W](lock: Lock)(block: => W): W = {
     lock.lock
     try block
     finally lock.unlock
   }
-  def withLock[W,R](req: Request[R])(block: Request[R] => W): W = {
+
+  private[channels] def withLock[W,R](req: Request[R])(block: Request[R] => W): W = {
     req.lock
     try block(req)
     finally req.unlock
   }
-  def succeed[R](req: Request[R], result: => R): Boolean = {
+
+  private[channels] def succeed[R](req: Request[R], result: => R): Boolean = {
     if (req.isActive) {
       req.setInactive
       req.promise.success(result)
@@ -154,15 +132,14 @@ package object channels {
     }
   }
 
-  class ChannelInternal[T](buffer: Buffer[T]) {
+  class ChannelInternal[T](buffer: Buffer[T]) extends Channel[T] {
     val mutex = new ReentrantLock
     var closed = false
     lazy val takeq = new Queue[Request[Option[T]]]()
     lazy val putq = new Queue[(Request[Boolean], T)]()
 
-    def put(value: T, req: Request[Boolean]): Boolean = {
+    private[channels] def put(value: T, req: Request[Boolean]): Boolean = {
       withLock(mutex){
-        cleanup
         if (closed) {
           withLock(req)(succeed(_, false))
         }
@@ -191,9 +168,8 @@ package object channels {
       }
     }
 
-    def take(req: Request[Option[T]]): Boolean = {
+    private[channels] def take(req: Request[Option[T]]): Boolean = {
       withLock(mutex){
-        cleanup
         if (buffer != null && buffer.size > 0) {
           val res = withLock(req)(succeed(_, unbuffer))
           while (!buffer.isFull && !putq.isEmpty) {
@@ -235,21 +211,27 @@ package object channels {
       }
     }
 
-    def cleanup() {
-      // TODO this is inefficient, does it need to be done?
-      // takeq = takeq.filter(req => req.isActive)
-      // putq = putq.filter(item => item._1.isActive)
+    def put(value: T): Future[Boolean] = {
+      val req = new SingleRequest[Boolean]
+      put(value, req)
+      req.promise.future
     }
 
-    def unbuffer(): Option[T] = Some(buffer.remove)
+    def take(): Future[Option[T]] = {
+      val req = new SingleRequest[Option[T]]
+      take(req)
+      req.promise.future
+    }
 
-    def dequeuePut(): Option[T] = {
+    private def unbuffer(): Option[T] = Some(buffer.remove)
+
+    private def dequeuePut(): Option[T] = {
       val (p, v) = putq.dequeue
       if (withLock(p)(succeed(_, true))) Some(v)
       else None
     }
 
-    def dequeueTake(v: T): Boolean = {
+    private def dequeueTake(v: T): Boolean = {
       val t = takeq.dequeue
       withLock(t)(succeed(_, Some(v)))
     }
