@@ -21,15 +21,43 @@ import scala.collection.mutable.Queue
 import scala.concurrent.{ExecutionContext, Promise, Future, Await}
 import java.util.concurrent.locks.{Lock, ReentrantLock}
 
+/**
+ * Channel.
+ */
 trait Channel[T] {
+
+  /**
+   * Put.
+   */
   def put(value: T): Future[Boolean]
+
+  /**
+   * Blocking put.
+   */
+  def put_!(value: T): Boolean
+
+  /**
+   * Take.
+   */
   def take(): Future[Option[T]]
+
+  /**
+   * Blocking take.
+   */
+  def take_!(): Option[T]
+
+  /**
+   * Closes this channel. Subseqent puts will be ignored. Awaiting and buffered puts remain available to take.
+   */
   def close()
+
   private[channels] def put(value: T, req: Request[Boolean]): Boolean
+
   private[channels] def take(req: Request[Option[T]]): Boolean
 }
 
 class ChannelInternal[T](buffer: Buffer[T]) extends Channel[T] {
+  val blockingAtMost = scala.concurrent.duration.Duration.Inf
   val mutex = new ReentrantLock
   var closed = false
   lazy val takeq = new Queue[Request[Option[T]]]()
@@ -114,10 +142,18 @@ class ChannelInternal[T](buffer: Buffer[T]) extends Channel[T] {
     req.promise.future
   }
 
+  def put_!(value: T): Boolean = {
+    Await.result(put(value), blockingAtMost)
+  }
+
   def take(): Future[Option[T]] = {
     val req = new SingleRequest[Option[T]]
     take(req)
     req.promise.future
+  }
+
+  def take_!(): Option[T] = {
+    Await.result(take(), blockingAtMost)
   }
 
   private def unbuffer(): Option[T] = Some(buffer.remove)

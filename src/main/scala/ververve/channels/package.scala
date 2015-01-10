@@ -23,13 +23,19 @@ package object channels {
 
   val ChannelWaitingRequestLimit = 512
 
+  /**
+   * Create an unbuffered channel.
+   */
   def channel[T]() = {
     new ChannelInternal[T](null)
   }
 
-  def channel[T](buffer: Int) = {
+  /**
+   * Create a channel with a fixed size buffer.
+   */
+  def channel[T](bufferSize: Int) = {
     val bufferImpl =
-      if (buffer > 0) new FixedBuffer[T](buffer)
+      if (bufferSize > 0) new FixedBuffer[T](bufferSize)
       else null
     new ChannelInternal[T](bufferImpl)
   }
@@ -41,6 +47,9 @@ package object channels {
   implicit def chanTakeAltOption[T](c: Channel[T]): TakeAlt[T] = TakeAlt(c)
   implicit def tuplePutAltOption[T](put: Tuple2[T, Channel[T]]): PutAlt[T] = PutAlt(put._2, put._1)
 
+  /**
+   * Alts.
+   */
   def alts[T](options: AltOption[T]*)(implicit executor: ExecutionContext): Future[Any] = {
     val flag = new SharedRequestFlag
     val init: Either[List[Future[Any]], Future[Any]] = Left(Nil)
