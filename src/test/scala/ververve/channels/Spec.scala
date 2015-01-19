@@ -179,4 +179,25 @@ class Spec extends FlatSpec with Matchers with ScalaFutures {
     c.put("Joy")
     take.futureValue should be (Some("Joy"))
   }
+
+  "Timeout" should "complete after duration with None" in {
+    val c = channel[String]()
+    val t = ververve.channels.timeout[String](4000 millis)
+    val res = alts(c, t)
+    res.isReadyWithin(3000 millis) should equal(false)
+    res.futureValue(Timeout(2000 millis)) should equal (None)
+  }
+
+  it should "complete multiple alts" in {
+    val c1 = channel[String]()
+    val c2 = channel[String]()
+    val t = ververve.channels.timeout[String](4000 millis)
+    val res1 = alts(c1, t)
+    val res2 = alts(c2, t)
+    res1.isReadyWithin(3000 millis) should equal(false)
+    res2.isReadyWithin(0 millis) should equal(false)
+    res1.futureValue(Timeout(2000 millis)) should equal (None)
+    res2.futureValue(Timeout(2000 millis)) should equal (None)
+  }
+
 }

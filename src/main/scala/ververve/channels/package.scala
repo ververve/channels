@@ -18,6 +18,7 @@
 package ververve
 
 import scala.concurrent.{ExecutionContext, Promise, Future, Await}
+import scala.concurrent.duration.Duration
 
 package object channels {
 
@@ -26,18 +27,24 @@ package object channels {
   /**
    * Create an unbuffered channel.
    */
-  def channel[T]() = {
+  def channel[T](): Channel[T] = {
     new ChannelInternal[T](null)
   }
 
   /**
    * Create a channel with a fixed size buffer.
    */
-  def channel[T](bufferSize: Int) = {
+  def channel[T](bufferSize: Int): Channel[T] = {
     val bufferImpl =
       if (bufferSize > 0) new FixedBuffer[T](bufferSize)
       else null
     new ChannelInternal[T](bufferImpl)
+  }
+
+  def timeout[T](duration: Duration): Channel[T] = {
+    val c = channel[T]()
+    TimeoutDaemon.add(c, duration)
+    c
   }
 
   sealed trait AltOption[T]
