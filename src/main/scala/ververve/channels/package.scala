@@ -47,18 +47,18 @@ package object channels {
     c
   }
 
-  sealed trait AltOption[T] {
+  sealed trait AltOption[+T] {
     private[channels] def action(flag: SharedRequestFlag): (Boolean, Future[_])
   }
-  case class PutAlt[T](c: Channel[T], value: T) extends AltOption[T] {
+  case class PutAlt[T, Y <: T](c: Channel[Y], value: Y) extends AltOption[T] {
     private[channels] def action(flag: SharedRequestFlag) = {
       val req = new SharedRequest[Boolean](flag)
       (c.put(value, req), req.promise.future)
     }
   }
-  case class TakeAlt[T](c: Channel[T]) extends AltOption[T] {
+  case class TakeAlt[T, Y <: T](c: Channel[Y]) extends AltOption[T] {
     private[channels] def action(flag: SharedRequestFlag) = {
-      val req = new SharedRequest[Option[T]](flag)
+      val req = new SharedRequest[Option[Y]](flag)
       (c.take(req), req.promise.future)
     }
   }
@@ -67,13 +67,13 @@ package object channels {
   // case class AltPutResult(c: Channel[_], res: Boolean)
   // case class AltTakeResult(c: Channel[_], res: Option[Any])
 
-  implicit def chanTakeAltOption[T](c: Channel[T]): TakeAlt[T] = TakeAlt(c)
-  implicit def tuplePutAltOption[T](put: Tuple2[T, Channel[T]]): PutAlt[T] = PutAlt(put._2, put._1)
+  implicit def chanTakeAltOption[T, Y <: T](c: Channel[Y]): TakeAlt[T, Y] = TakeAlt(c)
+  implicit def tuplePutAltOption[T, Y <: T](put: Tuple2[Y, Channel[Y]]): PutAlt[T, Y] = PutAlt(put._2, put._1)
 
   /**
    * Alts.
    */
-  def alts(options: AltOption[_]*)(implicit executor: ExecutionContext): Future[Any] = {
+  def alts[T](options: AltOption[T]*)(implicit executor: ExecutionContext): Future[Any] = {
     val flag = new SharedRequestFlag
     val init: Either[List[Future[Any]], Future[Any]] = Left(Nil)
     val future = options.foldLeft(init){ (acc, option) =>
