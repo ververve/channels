@@ -47,9 +47,25 @@ package object channels {
     c
   }
 
-  sealed trait AltOption[T]
-  case class PutAlt[T](c: Channel[T], value: T) extends AltOption[T]
-  case class TakeAlt[T](c: Channel[T]) extends AltOption[T]
+  sealed trait AltOption[T] {
+    private[channels] def action(flag: SharedRequestFlag): (Boolean, Future[_])
+  }
+  case class PutAlt[T](c: Channel[T], value: T) extends AltOption[T] {
+    private[channels] def action(flag: SharedRequestFlag) = {
+      val req = new SharedRequest[Boolean](flag)
+      (c.put(value, req), req.promise.future)
+    }
+  }
+  case class TakeAlt[T](c: Channel[T]) extends AltOption[T] {
+    private[channels] def action(flag: SharedRequestFlag) = {
+      val req = new SharedRequest[Option[T]](flag)
+      (c.take(req), req.promise.future)
+    }
+  }
+
+  // sealed trait AltResult
+  // case class AltPutResult(c: Channel[_], res: Boolean)
+  // case class AltTakeResult(c: Channel[_], res: Option[Any])
 
   implicit def chanTakeAltOption[T](c: Channel[T]): TakeAlt[T] = TakeAlt(c)
   implicit def tuplePutAltOption[T](put: Tuple2[T, Channel[T]]): PutAlt[T] = PutAlt(put._2, put._1)
@@ -57,20 +73,13 @@ package object channels {
   /**
    * Alts.
    */
-  def alts[T](options: AltOption[T]*)(implicit executor: ExecutionContext): Future[Any] = {
+  def alts(options: AltOption[_]*)(implicit executor: ExecutionContext): Future[Any] = {
     val flag = new SharedRequestFlag
     val init: Either[List[Future[Any]], Future[Any]] = Left(Nil)
     val future = options.foldLeft(init){ (acc, option) =>
       acc match {
         case Left(fs) =>
-          val (f, complete) = option match {
-            case PutAlt(c, v) =>
-              val req = new SharedRequest[Boolean](flag)
-              (req.promise.future, c.put(v, req))
-            case TakeAlt(c) =>
-              val req = new SharedRequest[Option[T]](flag)
-              (req.promise.future, c.take(req))
-          }
+          val (complete, f) = option.action(flag)
           if (complete) Right(f)
           else Left(f :: fs)
         case f @ Right(_) => f
@@ -81,5 +90,41 @@ package object channels {
       case Right(f) => f
     }
   }
+
+  // trait AltBuilder[+T] {
+  //   def or[V >: T](channel: Channel[V]): AltBuilder[V]
+  //   def select(): Future[Option[T]]
+  // }
+
+  // class PendingAltBuilder[T](
+  //   flag: SharedRequestFlag,
+  //   futures: List[Future[Option[T]]],
+  //   executor: ExecutionContext)
+  //   extends AltBuilder[T] {
+  //   def or[V >: T](channel: Channel[V]): AltBuilder[V] = {
+  //     val req = new SharedRequest[Option[V]](flag)
+  //     if (channel.take(req)) new CompleteAltBuilder(req.promise.future)
+  //     else new PendingAltBuilder(flag, req.promise.future :: futures, executor)
+  //   }
+  //   def select(): Future[Option[T]] = {
+  //     Future.firstCompletedOf(futures)(executor)
+  //   }
+  // }
+
+  // class CompleteAltBuilder[+T](result: Future[Option[T]]) extends AltBuilder[T] {
+  //   def or[V >: T](channel: Channel[V]): AltBuilder[V] = {
+  //     this
+  //   }
+  //   def select(): Future[Option[T]] = {
+  //     result
+  //   }
+  // }
+
+//   def alt[T](channel: Channel[T])(implicit executor: ExecutionContext): AltBuilder[T] = {
+//     val flag = new SharedRequestFlag
+//     val req = new SharedRequest[Option[T]](flag)
+//     if (channel.take(req)) new CompleteAltBuilder(req.promise.future)
+//     else new PendingAltBuilder(flag, req.promise.future :: Nil, executor)
+//   }
 
 }

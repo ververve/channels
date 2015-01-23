@@ -152,6 +152,18 @@ class Spec extends FlatSpec with Matchers with ScalaFutures {
     take1.isCompleted should equal (false)
   }
 
+  it should "allow multiple types" in {
+    trait Foo
+    case class Bar(s: String) extends Foo
+    case class Qux(l: Long) extends Foo
+    val c1 = channel[Bar]()
+    val c2 = channel[Qux]()
+    val res = alts(Bar("x") -> c1, c2)
+    res.isCompleted should be (false)
+    val put2 = c2.put(Qux(14))
+    res.futureValue(Timeout(5000 millis)) should equal (Some(Qux(14)))
+  }
+
   "A Buffered Channel" should "allow puts to be buffered" in {
     val c = channel[Int](3)
     c.put(1) should be ('completed)
