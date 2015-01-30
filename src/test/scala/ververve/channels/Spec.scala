@@ -99,7 +99,7 @@ class Spec extends FlatSpec with Matchers with ScalaFutures {
     c1.put("rabbit")
     c2.put("noise")
     val res = alts(c1, c2)
-    res.futureValue should equal (Some("rabbit"))
+    res.futureValue(Timeout(5000 millis)) should equal ((c1, Some("rabbit")))
   }
 
   it should "select the first result if possible immediately, put option" in {
@@ -108,7 +108,7 @@ class Spec extends FlatSpec with Matchers with ScalaFutures {
     val take1 = c1.take
     val take2 = c2.take
     val res = alts("rabbit" -> c1, "noise" -> c2)
-    res.futureValue should equal (true)
+    res.futureValue(Timeout(5000 millis)) should equal ((c1, true))
     take1.futureValue should equal (Some("rabbit"))
     take2.isReadyWithin(1000 millis) should be (false)
   }
@@ -121,7 +121,7 @@ class Spec extends FlatSpec with Matchers with ScalaFutures {
     c2.put("silence")
     c3.put("tree")
     val res = alts(c1, c2, c3)
-    res.futureValue should equal (Some("noise"))
+    res.futureValue(Timeout(5000 millis)) should equal ((c2, Some("noise")))
     c2.take.futureValue should equal (Some("silence"))
     c3.take.futureValue should equal (Some("tree"))
   }
@@ -134,7 +134,7 @@ class Spec extends FlatSpec with Matchers with ScalaFutures {
     res.isCompleted should be (false)
     val put2 = c2.put(2)
     val put1 = c1.put(1)
-    res.futureValue(Timeout(5000 millis)) should equal (Some(2))
+    res.futureValue(Timeout(5000 millis)) should equal ((c2, Some(2)))
     put2.isCompleted should equal (true)
     put1.isCompleted should equal (false)
   }
@@ -147,7 +147,7 @@ class Spec extends FlatSpec with Matchers with ScalaFutures {
     res.isCompleted should be (false)
     val take2 = c2.take
     val take1 = c1.take
-    res.futureValue(Timeout(5000 millis)) should equal (true)
+    res.futureValue(Timeout(5000 millis)) should equal ((c2, true))
     take2.isCompleted should equal (true)
     take1.isCompleted should equal (false)
   }
@@ -161,7 +161,7 @@ class Spec extends FlatSpec with Matchers with ScalaFutures {
     val res = alts(Bar("x") -> c1, c2)
     res.isCompleted should be (false)
     val put2 = c2.put(Qux(14))
-    res.futureValue(Timeout(5000 millis)) should equal (Some(Qux(14)))
+    res.futureValue(Timeout(5000 millis)) should equal ((c2, Some(Qux(14))))
   }
 
   "A Buffered Channel" should "allow puts to be buffered" in {
@@ -197,7 +197,7 @@ class Spec extends FlatSpec with Matchers with ScalaFutures {
     val t = ververve.channels.timeout[String](4000 millis)
     val res = alts(c, t)
     res.isReadyWithin(3000 millis) should equal(false)
-    res.futureValue(Timeout(2000 millis)) should equal (None)
+    res.futureValue(Timeout(2000 millis)) should equal ((t, None))
   }
 
   it should "complete multiple alts" in {
@@ -208,8 +208,8 @@ class Spec extends FlatSpec with Matchers with ScalaFutures {
     val res2 = alts(c2, t)
     res1.isReadyWithin(3000 millis) should equal(false)
     res2.isReadyWithin(0 millis) should equal(false)
-    res1.futureValue(Timeout(2000 millis)) should equal (None)
-    res2.futureValue(Timeout(2000 millis)) should equal (None)
+    res1.futureValue(Timeout(2000 millis)) should equal ((t, None))
+    res2.futureValue(Timeout(2000 millis)) should equal ((t, None))
   }
 
 }

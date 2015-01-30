@@ -48,18 +48,22 @@ package object channels {
   }
 
   sealed trait AltOption[+T] {
-    private[channels] def action(flag: SharedRequestFlag): (Boolean, Future[_])
+    private[channels] def action(flag: SharedRequestFlag)(implicit executor: ExecutionContext): (Boolean, Future[_])
   }
   case class PutAlt[T, Y <: T](c: Channel[Y], value: Y) extends AltOption[T] {
-    private[channels] def action(flag: SharedRequestFlag) = {
+    private[channels] def action(flag: SharedRequestFlag)(implicit executor: ExecutionContext) = {
       val req = new SharedRequest[Boolean](flag)
-      (c.put(value, req), req.promise.future)
+      // TODO this map via executor adds a slow down just to add the channel. Lame. Do in request instead?
+      val reqF = req.promise.future.map((c, _))
+      (c.put(value, req), reqF)
     }
   }
   case class TakeAlt[T, Y <: T](c: Channel[Y]) extends AltOption[T] {
-    private[channels] def action(flag: SharedRequestFlag) = {
+    private[channels] def action(flag: SharedRequestFlag)(implicit executor: ExecutionContext) = {
       val req = new SharedRequest[Option[Y]](flag)
-      (c.take(req), req.promise.future)
+      // TODO this map via executor adds a slow down just to add the channel. Lame. Do in request instead?
+      val reqF = req.promise.future.map((c, _))
+      (c.take(req), reqF)
     }
   }
 
