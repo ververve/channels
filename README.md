@@ -36,7 +36,11 @@ c.put("Hello")
 c.close
 ```
 
-Here we create a `Channel` that can accept and deal out `String` values. In an `async` block we wait for a future value to take from the `Channel`. Outside the `async` block we then put the value `"Hello"`, which allows the `async` take to complete. Finally we close the `Channel`.
+Above we
+1. Create a `Channel` that can accept and deal out `String` values.
+2. In an `async` block we wait for a future value to take from the `Channel`.
+3. Outside the `async` block we then put the value `"Hello"`, which allows the `async` take to complete.
+4. Finally we close the `Channel`.
 
 ## License
 
