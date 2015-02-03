@@ -1,5 +1,6 @@
 Async-Channels.
 Copyright 2015 Scott Abernethy (github @scott-abernethy).
+Derived from Clojure core.async - Copyright © 2013 Rich Hickey and contributors.
 Released under the Eclipse Public License v1.0.
 
 This program is free software: you can use it, redistribute it and/or modify
