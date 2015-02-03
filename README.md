@@ -1,40 +1,27 @@
-# Async-Channels
+# Async Channels
 
-Idiomatic Scala port of [Clojure core.async](https://github.com/clojure/core.async).
+An idiomatic Scala port of [Clojure core.async](https://github.com/clojure/core.async).
 
-Channels has no external dependencies, though it is recommended to use Channels with [Scala Async](https://github.com/scala/async) blocks.
+Channels has no external dependencies, though it is intended to be used with [Scala Async](https://github.com/scala/async) blocks.
 
 ## Quick start
 
-Add a dependency:
+Add SBT dependencies:
 
 ```scala
-// SBT
+// For Scala 2.11.x
+scalaVersion := "2.11.4"
+
 libraryDependencies += "ververve" %% "channels" % "0.1"
-```
 
-Create your first `channel`:
-
-```scala
-import ververve.channels._
-
-val c = channel[String]()
-c.put("Hello")
-assert(c.take_! == Some("Hello"))
-c.close
-```
-
-### Using with Scala Async
-
-Additionally add the following dependency:
-
-```scala
-// SBT
+// Optional (for async/await style)
 libraryDependencies += "org.scala-lang.modules" %% "scala-async" % "0.9.3"
 ```
 
+Create your first `Channel`:
+
 ```scala
-import ExecutionContext.Implicits.global
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.async.Async.{async, await}
 import ververve.channels._
 
@@ -49,8 +36,8 @@ c.put("Hello")
 c.close
 ```
 
+Here we create a `Channel` that can accept and deal out `String` values. In an `async` block we wait for a future value to take from the `Channel`. Outside the `async` block we then put the value `"Hello"`, which allows the `async` take to complete. Finally we close the `Channel`.
+
 ## License
 
 Released under the Eclipse Public License v1.0.
-
-Derived from Clojure core.async - Copyright © 2013 Rich Hickey and contributors.

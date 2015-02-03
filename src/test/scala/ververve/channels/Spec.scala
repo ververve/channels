@@ -127,7 +127,6 @@ class Spec extends FlatSpec with Matchers with ScalaFutures {
   }
 
   it should "only select one alternative when available, take option" in {
-    // implicit val defaultPatience = PatienceConfig(timeout = Span(2, Seconds), interval = Span(5, Millis))
     val c1 = channel[Int]()
     val c2 = channel[Int]()
     val res = alts(c1, c2)
@@ -140,7 +139,6 @@ class Spec extends FlatSpec with Matchers with ScalaFutures {
   }
 
   it should "only select one alternative when available, put option" in {
-    // implicit val defaultPatience = PatienceConfig(timeout = Span(2, Seconds), interval = Span(5, Millis))
     val c1 = channel[Int]()
     val c2 = channel[Int]()
     val res = alts(1 -> c1, 2 -> c2)

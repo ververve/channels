@@ -21,36 +21,6 @@ import scala.concurrent.{Future}
 import scala.concurrent.duration.Duration
 import java.util.concurrent.{DelayQueue, Delayed, TimeUnit, ConcurrentSkipListMap}
 
-// trait TimeoutChannel extends Channel[Unit]
-
-// class TimeoutChannelInternal(duration: Duration) extends TimeoutChannel {
-//   def put(value: Unit): Future[Boolean] = ???
-
-//   /**
-//    * Blocking put a value into this channel.
-//    */
-//   def put_!(value: Unit): Boolean = ???
-
-//   /**
-//    * Take a value from this channel.
-//    */
-//   def take(): Future[Option[Unit]] = ???
-
-//   /**
-//    * Blocking take a value from this channel.
-//    */
-//   def take_!(): Option[Unit] = ???
-
-//   /**
-//    * Closes this channel. Subseqent puts will be ignored. Awaiting and buffered puts remain available to take.
-//    */
-//   def close() = ???
-
-//   private[channels] def put(value: Unit, req: Request[Boolean]): Boolean = ???
-
-//   private[channels] def take(req: Request[Option[Unit]]): Boolean = ???
-// }
-
 object TimeoutDaemon {
   val timeouts = new DelayQueue[TimeoutQueueEntry]
   val worker = new Thread(new Runnable{

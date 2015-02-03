@@ -47,7 +47,7 @@ trait Channel[T] {
   def take_!(): Option[T]
 
   /**
-   * Closes this channel. Subseqent puts will be ignored. Awaiting and buffered puts remain available to take.
+   * Closes this channel. Subsequent puts will be ignored. Awaiting and buffered puts remain available to take.
    */
   def close()
 

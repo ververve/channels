@@ -41,6 +41,9 @@ package object channels {
     new ChannelInternal[T](bufferImpl)
   }
 
+  /**
+   * Create a timeout channel, that will close after the specified duration.
+   */
   def timeout[T](duration: Duration): Channel[T] = {
     val c = channel[T]()
     TimeoutDaemon.add(c, duration)
@@ -67,15 +70,11 @@ package object channels {
     }
   }
 
-  // sealed trait AltResult
-  // case class AltPutResult(c: Channel[_], res: Boolean)
-  // case class AltTakeResult(c: Channel[_], res: Option[Any])
-
   implicit def chanTakeAltOption[T, Y <: T](c: Channel[Y]): TakeAlt[T, Y] = TakeAlt(c)
   implicit def tuplePutAltOption[T, Y <: T](put: Tuple2[Y, Channel[Y]]): PutAlt[T, Y] = PutAlt(put._2, put._1)
 
   /**
-   * Alts.
+   * Completes at most one of the given Channel operations (puts or takes).
    */
   def alts[T](options: AltOption[T]*)(implicit executor: ExecutionContext): Future[Any] = {
     val flag = new SharedRequestFlag
@@ -95,16 +94,21 @@ package object channels {
     }
   }
 
-  // trait AltBuilder[+T] {
-  //   def or[V >: T](channel: Channel[V]): AltBuilder[V]
-  //   def select(): Future[Option[T]]
+  // sealed trait AltResult[+T, +P]
+  // case class PutResult[T, P, P_ <: P](c: Channel[P_], res: Boolean) extends AltResult[T, P]
+  // case class TakeResult[T, P, T_ <: T](c: Channel[T_], res: Option[T]) extends AltResult[T, P]
+
+  // trait AltBuilder[+T, +P] {
+  //   def take[T_ <: T](channel: Channel[T_]): AltBuilder[T, P]
+  //   def put[P_ <: P](channel: Channel[P_], value: P_): AltBuilder[T, P]
+  //   def select(): Future[AltResult[T, P]]
   // }
 
-  // class PendingAltBuilder[T](
+  // class PendingAltBuilder[T,P](
   //   flag: SharedRequestFlag,
   //   futures: List[Future[Option[T]]],
   //   executor: ExecutionContext)
-  //   extends AltBuilder[T] {
+  //   extends AltBuilder[T,P] {
   //   def or[V >: T](channel: Channel[V]): AltBuilder[V] = {
   //     val req = new SharedRequest[Option[V]](flag)
   //     if (channel.take(req)) new CompleteAltBuilder(req.promise.future)
@@ -115,7 +119,7 @@ package object channels {
   //   }
   // }
 
-  // class CompleteAltBuilder[+T](result: Future[Option[T]]) extends AltBuilder[T] {
+  // class CompleteAltBuilder[T,P](result: Future[Option[T]]) extends AltBuilder[T,P] {
   //   def or[V >: T](channel: Channel[V]): AltBuilder[V] = {
   //     this
   //   }
@@ -124,11 +128,11 @@ package object channels {
   //   }
   // }
 
-//   def alt[T](channel: Channel[T])(implicit executor: ExecutionContext): AltBuilder[T] = {
-//     val flag = new SharedRequestFlag
-//     val req = new SharedRequest[Option[T]](flag)
-//     if (channel.take(req)) new CompleteAltBuilder(req.promise.future)
-//     else new PendingAltBuilder(flag, req.promise.future :: Nil, executor)
-//   }
+  // def alt[T](channel: Channel[T])(implicit executor: ExecutionContext): AltBuilder[T] = {
+  //   val flag = new SharedRequestFlag
+  //   val req = new SharedRequest[Option[T]](flag)
+  //   if (channel.take(req)) new CompleteAltBuilder(req.promise.future)
+  //   else new PendingAltBuilder(flag, req.promise.future :: Nil, executor)
+  // }
 
 }
