@@ -15,7 +15,7 @@
  * this program. If not, see <http://opensource.org/licenses/eclipse-1.0.php>.
  */
 
-package ververve.channels
+package com.ververve.channels
 
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.{Lock, ReentrantLock}

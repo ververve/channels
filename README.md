@@ -14,7 +14,7 @@ Add SBT dependencies:
 // For Scala 2.11.x
 scalaVersion := "2.11.4"
 
-libraryDependencies += "ververve" %% "channels" % "0.1"
+libraryDependencies += "com.ververve" %% "channels" % "0.1"
 
 // Optional (for async/await style)
 libraryDependencies += "org.scala-lang.modules" %% "scala-async" % "0.9.3"
@@ -25,7 +25,7 @@ Create your first `Channel`:
 ```scala
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.async.Async.{async, await}
-import ververve.channels._
+import com.ververve.channels._
 
 val c = channel[String]()
 

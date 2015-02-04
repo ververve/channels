@@ -15,7 +15,7 @@
  * this program. If not, see <http://opensource.org/licenses/eclipse-1.0.php>.
  */
 
-package ververve.channels
+package com.ververve.channels
 
 import org.scalatest._
 import org.scalatest.concurrent._
@@ -192,7 +192,7 @@ class Spec extends FlatSpec with Matchers with ScalaFutures {
 
   "Timeout" should "complete after duration with None" in {
     val c = channel[String]()
-    val t = ververve.channels.timeout[String](4000 millis)
+    val t = com.ververve.channels.timeout[String](4000 millis)
     val res = alts(c, t)
     res.isReadyWithin(3000 millis) should equal(false)
     res.futureValue(Timeout(2000 millis)) should equal ((t, None))
@@ -201,7 +201,7 @@ class Spec extends FlatSpec with Matchers with ScalaFutures {
   it should "complete multiple alts" in {
     val c1 = channel[String]()
     val c2 = channel[String]()
-    val t = ververve.channels.timeout[String](4000 millis)
+    val t = com.ververve.channels.timeout[String](4000 millis)
     val res1 = alts(c1, t)
     val res2 = alts(c2, t)
     res1.isReadyWithin(3000 millis) should equal(false)

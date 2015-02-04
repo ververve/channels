@@ -15,7 +15,7 @@
  * this program. If not, see <http://opensource.org/licenses/eclipse-1.0.php>.
  */
 
-package ververve
+package com.ververve
 
 import scala.concurrent.{ExecutionContext, Promise, Future, Await}
 import scala.concurrent.duration.Duration
