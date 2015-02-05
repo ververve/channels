@@ -11,7 +11,6 @@ Channels has no external dependencies, though it is intended to be used with [Sc
 Add SBT dependencies:
 
 ```scala
-// For Scala 2.11.x
 scalaVersion := "2.11.4"
 
 libraryDependencies += "com.ververve" %% "channels" % "0.1"

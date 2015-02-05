@@ -1,6 +1,7 @@
 lazy val root = (project in file(".")).
   settings(
     name := "channels",
+    organization := "com.ververve",
     version := "0.1",
     scalaVersion := "2.11.4"
   )
@@ -22,6 +23,8 @@ publishTo := {
   if (isSnapshot.value) Some("snapshots" at nexus + "content/repositories/snapshots")
   else Some("releases" at nexus + "service/local/staging/deploy/maven2")
 }
+
+credentials += Credentials(Path.userHome / ".ververve-sonatype-credentials")
 
 pomIncludeRepository := { _ => false }
 
