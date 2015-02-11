@@ -46,7 +46,7 @@ In the above we
 
 ## Usage
 
-Create an unbuffered 'rendezvous' channel that accepts `Long`s:
+Create an unbuffered 'rendezvous' channel that accepts `Long` type:
 
 ```scala
 val c = channel[Long]()   // c: Channel[Long]
@@ -130,17 +130,16 @@ We can even select the first available `Channel.take` or `Channel.put` with `alt
 val c1 = channel[Int]
 val c2 = channel[String]
 async {
-  val res = await(alts(34 -> c1, c2))
-	res match {
-		case (`c1`, _)) => // Put done
-		case (`c2`, res) => // Take result
-	}
+  await(alts(34 -> c1, c2)) match {
+    case (`c1`, _)) =>    // Put complete
+    case (`c2`, res) =>   // Take result
+  }
 }
 c2.put("Hello")
 assert(c1.take_! == Some(34))
 ```
 
-Timeout `alts` operations using `timeout` `Channel`s:
+Timeout `alts` operations using `timeout` `Channel`:
 
 ```scala
 val c = channel[String]
