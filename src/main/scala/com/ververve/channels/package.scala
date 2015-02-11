@@ -23,6 +23,7 @@ import scala.concurrent.duration.Duration
 package object channels {
 
   val ChannelWaitingRequestLimit = 512
+  val blockingAtMost = scala.concurrent.duration.Duration.Inf
 
   /**
    * Create an unbuffered channel.
@@ -92,6 +93,13 @@ package object channels {
       case Left(fs) => Future.firstCompletedOf(fs)
       case Right(f) => f
     }
+  }
+
+  /**
+   * Completes at most one of the given Channel operations (puts or takes). Blocking.
+   */
+  def alts_![T](options: AltOption[T]*)(implicit executor: ExecutionContext): Any = {
+    Await.result(alts(options:_*), blockingAtMost)
   }
 
   // sealed trait AltResult[+T, +P]
