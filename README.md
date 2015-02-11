@@ -130,22 +130,43 @@ We can even select the first available `Channel.take` or `Channel.put` with `alt
 val c1 = channel[Int]
 val c2 = channel[String]
 async {
-  await(alts(34 -> c1, c2)) match {
-    case (`c1`, _)) =>    // Put complete
-    case (`c2`, res) =>   // Take result
+  while (true) {
+    await(alts(34 -> c1, c2)) match {
+      case (`c1`, _)) =>    // Put complete
+      case (`c2`, res) =>   // Take result
+    }
   }
 }
 c2.put("Hello")
 assert(c1.take_! == Some(34))
 ```
 
-Timeout `alts` operations using `timeout` `Channel`:
+Timeout incomplete `alts` operations using `timeout` `Channel`:
 
 ```scala
 val c = channel[String]
 val t = timeout[String](5.seconds)
 alts_!("Hi" -> c, t)
 // After 5 seconds returns (`t`, None)
+```
+
+Channels are very lightweight so you can create a lot of them very cheaply, here we create and chain together 100,000 in <100 milliseconds:
+
+```scala
+val length = 100000
+val first = channel[Int]()
+var last = first
+for (i <- 0 until length) {
+  val dest = channel[Int]()
+  val src = last
+  async {
+    val v = await(src.take)
+    dest.put(v.get + 1)
+  }
+  last = dest
+}
+first.put(1)
+assert(last.take_! == Some(length + 1))
 ```
 
 ## License
