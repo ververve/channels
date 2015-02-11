@@ -81,7 +81,7 @@ Asynchronous (non-blocking) operations `Channel.put` and `Channel.take`:
 val c = channel[String]
 c.put("Hello")
 val f = c.take()   // f: Future[Option[String]]
-val res = Await.result(res, 1.second)   // res: Option[String]
+val res = Await.result(f, 1.second)   // res: Option[String]
 assert(res == Some("Hello"))
 ```
 
