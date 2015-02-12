@@ -52,10 +52,10 @@ Create an unbuffered 'rendezvous' channel that accepts `Long` type:
 val c = channel[Long]()   // c: Channel[Long]
 ```
 
-Create a channel with fixed size buffer:
+Create a channel with fixed size buffer that accepts `String` type:
 
 ```scala
-val c = channel[Long](5)   // c: Channel[Long]
+val c = channel[String](5)   // c: Channel[String]
 ```
 
 Close a channel with `Channel.close`:
@@ -85,7 +85,7 @@ val res = Await.result(f, 1.second)   // res: Option[String]
 assert(res == Some("Hello"))
 ```
 
-Asynchronous (non-blocking) operations using `Async` blocks:
+Asynchronous (non-blocking) operations using `Async.async` blocks:
 
 ```scala
 val c = channel[String]
@@ -96,7 +96,7 @@ async {
 c.put("Hello")
 ```
 
-Mixing Synchronous and Asynchronous operations on the same `Channel`:
+Mixing synchronous and asynchronous operations on the same `Channel`:
 
 ```scala
 val c = channel[String]
@@ -122,8 +122,8 @@ c1.put(34)
 // Outputs:
 // > Got (ChannelInternal@7f5ff567, Some(Hello))
 // > Got (ChannelInternal@7232ab12, Some(34))
-
 ```
+
 We can even select the first available `Channel.take` or `Channel.put` with `alts`:
 
 ```scala
@@ -141,16 +141,32 @@ c2.put("Hello")
 assert(c1.take_! == Some(34))
 ```
 
-Timeout incomplete `alts` operations using `timeout` `Channel`:
+The `timeout` function is used to create a `Channel` that closes after the specified duration.
+
+```scala
+val t = timeout[String](5.seconds)
+```
+
+A `timeout` channel can be used in `alts` to timeout other `Channel` operations:
 
 ```scala
 val c = channel[String]
-val t = timeout[String](5.seconds)
-alts_!("Hi" -> c, t)
-// After 5 seconds returns (`t`, None)
+val t = timeout[String](2.minutes)
+alts_!(c, t)
+// After 2 minutes... returns (`t`, None)
 ```
 
-Channels are very lightweight so you can create a lot of them very cheaply, here we create and chain together 100,000 in <100 milliseconds:
+A `timeout` instance can be used in multiple `alts` to ensure all operations have identical timeouts.
+
+```scala
+val c1 = channel[String]
+val c2 = channel[String]
+val t = timeout[String](9.seconds)
+alts("Hi" -> c1, t)
+alts(c2, t)
+```
+
+Channels are very lightweight so you can create a lot of them very cheaply - below we create and chain together 100,000 in <100 milliseconds:
 
 ```scala
 val length = 100000
