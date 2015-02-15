@@ -28,28 +28,26 @@ package object channels {
   /**
    * Create an unbuffered channel.
    */
-  def channel[T](): Channel[T] = {
-    new ChannelInternal[T](null)
-  }
+  def channel[T]() = Channel.apply[T]()
 
   /**
    * Create a channel with a fixed size buffer.
    */
-  def channel[T](bufferSize: Int): Channel[T] = {
-    val bufferImpl =
-      if (bufferSize > 0) new FixedBuffer[T](bufferSize)
-      else null
-    new ChannelInternal[T](bufferImpl)
-  }
+  def channel[T](bufferSize: Int): Channel[T] = Channel.apply[T](bufferSize)
 
   /**
    * Create a timeout channel, that will close after the specified duration.
    */
   def timeout[T](duration: Duration): Channel[T] = {
+    // TODO: Make take only?
     val c = channel[T]()
     TimeoutDaemon.add(c, duration)
     c
   }
+
+  def future[T](f: Future[T]): TakeOnlyChannel[T] = ???
+
+  def stream[T](s: Stream[T]): TakeOnlyChannel[T] = ???
 
   sealed trait AltOption[+T] {
     private[channels] def action(flag: SharedRequestFlag)(implicit executor: ExecutionContext): (Boolean, Future[_])

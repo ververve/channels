@@ -19,7 +19,67 @@ package com.ververve.channels
 
 import scala.collection.mutable.Queue
 import scala.concurrent.{ExecutionContext, Promise, Future, Await}
+import scala.util.{Success, Failure}
 import java.util.concurrent.locks.{Lock, ReentrantLock}
+
+object Channel {
+
+  /**
+   * Create an unbuffered channel.
+   */
+  def apply[T](): Channel[T] = {
+    new ChannelInternal[T](null)
+  }
+
+  /**
+   * Create a channel with a fixed size buffer.
+   */
+  def apply[T](bufferSize: Int): Channel[T] = {
+    val bufferImpl =
+      if (bufferSize > 0) new FixedBuffer[T](bufferSize)
+      else null
+    new ChannelInternal[T](bufferImpl)
+  }
+
+  def future[T](f: Future[T])(implicit ec: ExecutionContext): TakeOnlyChannel[T] = new TakeOnlyChannel[T] {
+
+    // Should you be able to close this before (or after completion)?
+
+    val internal = Channel.apply[T]()
+    // TODO what to do with exceptions. Use Try or new monad for Value | Closed | Exception
+    f.onComplete{
+      case Success(v) =>
+        internal.put(v)
+        internal.close()
+      case Failure(_) =>
+        internal.close()
+    }
+
+    /**
+     * Take a value from this channel.
+     */
+    def take(): Future[Option[T]] =
+      internal.take()
+
+    /**
+     * Blocking take a value from this channel.
+     */
+    def take_!(): Option[T] =
+      internal.take_!()
+
+    /**
+     * Closes this channel. Subsequent puts will be ignored (with a return value of false). Awaiting and buffered puts remain available to take, and once drained any further takes will not be accepted (and return None).
+     */
+    def close() =
+      internal.close()
+
+    private[channels] def take(req: Request[Option[T]]): Boolean =
+      internal.take(req)
+  }
+
+  def stream[T](s: Stream[T]): TakeOnlyChannel[T] = ???
+
+}
 
 /**
  * Channel.
@@ -47,13 +107,34 @@ trait Channel[T] {
   def take_!(): Option[T]
 
   /**
-   * Closes this channel. Subsequent puts will be ignored. Awaiting and buffered puts remain available to take.
+   * Closes this channel. Subsequent puts will be ignored (with a return value of false). Awaiting and buffered puts remain available to take, and once drained any further takes will not be accepted (and return None).
    */
   def close()
 
   private[channels] def put(value: T, req: Request[Boolean]): Boolean
 
   private[channels] def take(req: Request[Option[T]]): Boolean
+}
+
+trait PutOnlyChannel[T] extends Channel[T]
+trait TakeOnlyChannel[T] extends Channel[T] {
+  /**
+   * Put a value into this channel.
+   * Not supported.
+   */
+  def put(value: T): Future[Boolean] =
+    throw new UnsupportedOperationException
+
+  /**
+   * Blocking put a value into this channel.
+   * Not supported.
+   */
+  def put_!(value: T): Boolean =
+    throw new UnsupportedOperationException
+
+  private[channels] def put(value: T, req: Request[Boolean]): Boolean =
+    throw new UnsupportedOperationException
+
 }
 
 class ChannelInternal[T](buffer: Buffer[T]) extends Channel[T] {
@@ -177,14 +258,14 @@ class ChannelInternal[T](buffer: Buffer[T]) extends Channel[T] {
   private def validatePutq() {
     putq.dequeueFirst{ i =>
       val (p, _) = i
-      // lock not needed
+      // TODO: lock not needed, remove.
       withLock(p)(!_.isActive)
     }
   }
 
   private def validateTakeq() {
     takeq.dequeueFirst{ t =>
-      // lock not needed
+      // TODO: lock not needed, remove.
       withLock(t)(!_.isActive)
     }
   }

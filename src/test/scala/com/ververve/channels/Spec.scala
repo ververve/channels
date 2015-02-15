@@ -21,6 +21,7 @@ import org.scalatest._
 import org.scalatest.concurrent._
 import org.scalatest.time.SpanSugar._
 import org.scalatest.concurrent.PatienceConfiguration._
+import scala.concurrent.{ExecutionContext, Promise, Future, Await}
 import scala.concurrent.ExecutionContext.Implicits.global
 
 class Spec extends FlatSpec with Matchers with ScalaFutures {
@@ -208,6 +209,40 @@ class Spec extends FlatSpec with Matchers with ScalaFutures {
     res2.isReadyWithin(0 millis) should equal(false)
     res1.futureValue(Timeout(2000 millis)) should equal ((t, None))
     res2.futureValue(Timeout(2000 millis)) should equal ((t, None))
+  }
+
+  "Channel.future" should "be read-only" in {
+    val p = Promise[String]
+    val f = p.future
+    val c = Channel.future(f)
+    an [UnsupportedOperationException] should be thrownBy c.put("Can haz put?")
+    an [UnsupportedOperationException] should be thrownBy c.put_!("Can haz put?")
+    // TODO also check alts put ...
+    p.success("Back")
+    an [UnsupportedOperationException] should be thrownBy c.put("Can haz put?")
+    an [UnsupportedOperationException] should be thrownBy c.put_!("Can haz put?")
+  }
+
+  "Channel.future" should "deliver a successful future via a take" in {
+    val p = Promise[String]
+    val f = p.future
+    val c = Channel.future(f)
+    val res = c.take()
+    res.isReadyWithin(10 millis) should equal(false)
+    p.success("Back")
+    res.futureValue(Timeout(2 seconds)) should equal (Some("Back"))
+    c.take_!() should equal (None)
+  }
+
+  it should "deliver a failed future via a take, as None" in {
+    val p = Promise[String]
+    val f = p.future
+    val c = Channel.future(f)
+    val res = c.take()
+    res.isReadyWithin(10 millis) should equal(false)
+    p.failure(new NullPointerException)
+    res.futureValue(Timeout(2 seconds)) should equal (None)
+    c.take_!() should equal (None)
   }
 
 }
