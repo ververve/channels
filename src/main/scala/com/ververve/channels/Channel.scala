@@ -43,8 +43,6 @@ object Channel {
 
   def future[T](f: Future[T])(implicit ec: ExecutionContext): TakeOnlyChannel[T] = new TakeOnlyChannel[T] {
 
-    // Should you be able to close this before (or after completion)?
-
     val internal = Channel.apply[T]()
     // TODO what to do with exceptions. Use Try or new monad for Value | Closed | Exception
     f.onComplete{
@@ -116,7 +114,26 @@ trait Channel[T] {
   private[channels] def take(req: Request[Option[T]]): Boolean
 }
 
-trait PutOnlyChannel[T] extends Channel[T]
+trait PutOnlyChannel[T] extends Channel[T] {
+  /**
+   * Take a value from this channel.
+   * Not supported.
+   */
+  def take(): Future[Option[T]] =
+    throw new UnsupportedOperationException
+
+  /**
+   * Blocking take a value from this channel.
+   * Not supported.
+   */
+  def take_!(): Option[T] =
+    throw new UnsupportedOperationException
+
+  private[channels] def take(req: Request[Option[T]]): Boolean =
+    throw new UnsupportedOperationException
+
+}
+
 trait TakeOnlyChannel[T] extends Channel[T] {
   /**
    * Put a value into this channel.
