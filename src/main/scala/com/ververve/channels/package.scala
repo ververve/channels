@@ -45,10 +45,6 @@ package object channels {
     c
   }
 
-  def future[T](f: Future[T]): TakeOnlyChannel[T] = ???
-
-  def stream[T](s: Stream[T]): TakeOnlyChannel[T] = ???
-
   sealed trait AltOption[+T] {
     private[channels] def action(flag: SharedRequestFlag)(implicit executor: ExecutionContext): (Boolean, Future[_])
   }
