@@ -85,7 +85,7 @@ val res = Await.result(f, 1.second)   // res: Option[String]
 assert(res == Some("Hello"))
 ```
 
-Asynchronous (non-blocking) operations using `Async.async` blocks:
+Asynchronous (non-blocking) operations using `async` blocks:
 
 ```scala
 val c = channel[String]
@@ -147,7 +147,7 @@ The `timeout` function is used to create a `Channel` that closes after the speci
 val t = timeout[String](5.seconds)
 ```
 
-A `timeout` channel can be used in `alts` to timeout other `Channel` operations:
+A `timeout` channel can be used in `alts` to do timed `Channel` operations:
 
 ```scala
 val c = channel[String]
@@ -156,7 +156,7 @@ alts_!(c, t)
 // After 2 minutes... returns (`t`, None)
 ```
 
-A `timeout` instance can be used in multiple `alts` to ensure all operations have identical timeouts.
+A `timeout` instance can be used in multiple `alts` to ensure all operations have identical timeout conditions:
 
 ```scala
 val c1 = channel[String]
@@ -166,7 +166,9 @@ alts("Hi" -> c1, t)
 alts(c2, t)
 ```
 
-Channels are very lightweight so you can create a lot of them very cheaply - below we create and chain together 100,000 in <100 milliseconds:
+## Fast and Lightweight
+
+Channels and `async` blocks are very lightweight so you can create a lot of them very cheaply - below we create and chain together 100,000 in <100 milliseconds:
 
 ```scala
 val length = 100000
@@ -184,6 +186,12 @@ for (i <- 0 until length) {
 first.put(1)
 assert(last.take_! == Some(length + 1))
 ```
+
+## Rational
+
+### Motivation
+
+### Comparison to Futures | Akka | Gopher
 
 ## License
 
